@@ -1,0 +1,10 @@
+{
+  "generated_at": "2026-06-16T19:14:40+00:00",
+  "warehouse_path": "/Users/francisryansantos/whitney-archive/data/whitney.duckdb",
+  "warehouse_sha256": "8529e2d43c446412dd105270af122480a13f5e747e7785b9f22c804cb8358f52",
+  "counts": {
+    "artworks": 27425,
+    "artists_with_works": 4107,
+    "artists_total": 6999
+  }
+}

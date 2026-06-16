@@ -1,0 +1,265 @@
+---
+import Layout from "../../layouts/Layout.astro";
+import { ARTISTS_FULL, stripHtml, type ArtistFull } from "../../lib/catalog";
+
+export async function getStaticPaths() {
+  return ARTISTS_FULL.map((a) => ({ params: { id: a.id }, props: { artist: a } }));
+}
+
+interface Props { artist: ArtistFull }
+const { artist } = Astro.props;
+
+function smallVariant(url: string | null): string | null {
+  if (!url) return null;
+  const parts = url.split("/");
+  const fname = parts.at(-1)!;
+  const stripped = fname.replace(/^(small|medium|large)_/, "");
+  parts[parts.length - 1] = "small_" + stripped;
+  return parts.join("/");
+}
+
+const dates = (artist.display_date || "").trim() ||
+  [artist.begin_date, artist.end_date].filter(Boolean).join("–");
+
+const description = stripHtml(artist.biography).slice(0, 200) ||
+  `${artist.display_name} — ${artist.n_works} works in the Whitney's public collection.`;
+
+// Limit how many works render inline; rest sit behind a "show all" affordance.
+const INLINE_WORKS_LIMIT = 60;
+const visibleWorks = artist.works.slice(0, INLINE_WORKS_LIMIT);
+const moreWorksCount = Math.max(0, artist.works.length - INLINE_WORKS_LIMIT);
+---
+
+<Layout title={artist.display_name} description={description}>
+  <article
+    class="artist-page"
+    data-pagefind-body
+    data-pagefind-meta={`title:${artist.display_name}`}
+  >
+    <header class="artist-header">
+      <p class="artist-eyebrow">
+        Artist
+        {artist.biennial && <span class="badge badge-biennial">Biennial</span>}
+        {artist.artport && <span class="badge badge-artport">Artport</span>}
+        {!artist.in_collection && <span class="badge">Not in permanent collection</span>}
+        {artist.on_view && <span class="badge badge-on-view">On view</span>}
+        {artist.is_temp_id && <span class="badge badge-warn">Temp ID</span>}
+      </p>
+      <h1 class="artist-name">{artist.display_name}</h1>
+      {dates && <p class="artist-dates">{dates}</p>}
+
+      <div class="artist-counts">
+        {artist.n_works > 0 && (
+          <span><strong>{artist.n_works.toLocaleString()}</strong> work{artist.n_works === 1 ? "" : "s"} in the collection</span>
+        )}
+        {artist.n_exhibitions > 0 && (
+          <span><strong>{artist.n_exhibitions.toLocaleString()}</strong> exhibition{artist.n_exhibitions === 1 ? "" : "s"} at the Whitney</span>
+        )}
+      </div>
+
+      {(artist.ulan_id || artist.wikidata_id) && (
+        <ul class="artist-links">
+          {artist.ulan_id && (
+            <li>
+              <a
+                href={`https://vocab.getty.edu/ulan/${artist.ulan_id}`}
+                rel="noopener"
+              >
+                ULAN {artist.ulan_id}
+              </a>
+            </li>
+          )}
+          {artist.wikidata_id && (
+            <li>
+              <a
+                href={`https://www.wikidata.org/wiki/${artist.wikidata_id}`}
+                rel="noopener"
+              >
+                Wikidata {artist.wikidata_id}
+              </a>
+            </li>
+          )}
+        </ul>
+      )}
+    </header>
+
+    {artist.biography && (
+      <section class="artist-section">
+        <h2>Biography</h2>
+        <div class="artist-prose" set:html={artist.biography}></div>
+      </section>
+    )}
+
+    {artist.works.length > 0 && (
+      <section class="artist-section">
+        <h2>Works in the collection</h2>
+        <div class="artist-works-grid">
+          {visibleWorks.map((w) => {
+            const thumb = smallVariant(w.primary_image_url);
+            const alt = w.ai_alt_text || w.alt_text || w.title || "Artwork";
+            return (
+              <article class="work-card">
+                <a href={`/artworks/${w.id}`} class="work-link">
+                  <div class="work-image">
+                    {thumb ? (
+                      <img src={thumb} alt={alt} loading="lazy" decoding="async" />
+                    ) : (
+                      <div class="work-image-placeholder">{w.classification || "No image"}</div>
+                    )}
+                  </div>
+                  <div class="work-body">
+                    <p class="work-title">{w.title || "Untitled"}</p>
+                    <p class="work-meta">
+                      {w.display_date}
+                      {w.classification && w.display_date && " · "}
+                      <span class="work-class">{w.classification}</span>
+                    </p>
+                  </div>
+                </a>
+              </article>
+            );
+          })}
+        </div>
+        {moreWorksCount > 0 && (
+          <p class="more-works">
+            Showing the first {INLINE_WORKS_LIMIT} of {artist.n_works.toLocaleString()} works.
+            <a href={`/?artist=${encodeURIComponent(artist.display_name)}`}>
+              Browse all {artist.n_works.toLocaleString()} →
+            </a>
+          </p>
+        )}
+      </section>
+    )}
+
+    {artist.exhibitions.length > 0 && (
+      <section class="artist-section">
+        <h2>Exhibitions at the Whitney</h2>
+        <ul class="exhibitions-list">
+          {artist.exhibitions.map((e) => (
+            <li>
+              <a href={`https://whitney.org/exhibitions/${e.id}`} rel="noopener">
+                <span class="ex-title">{e.title}</span>
+                <span class="ex-dates">
+                  {e.start_date}{e.end_date && ` – ${e.end_date}`}
+                </span>
+              </a>
+            </li>
+          ))}
+        </ul>
+      </section>
+    )}
+  </article>
+
+  <style>
+    .artist-page { padding-top: 0.5rem; }
+
+    .artist-header {
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 1.5rem;
+      margin-bottom: 2rem;
+    }
+    .artist-eyebrow {
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      font-size: 0.78rem;
+      color: var(--fg-muted);
+      margin: 0 0 0.25rem 0;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.4rem;
+      align-items: center;
+    }
+    .badge {
+      background: var(--fg-faint); color: white;
+      padding: 0.1rem 0.45rem; border-radius: 2px;
+      font-size: 0.7rem; letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+    .badge-biennial { background: var(--fg); color: var(--bg); }
+    .badge-artport  { background: #4338ca; }
+    .badge-on-view  { background: #2a7a2a; }
+    .badge-warn     { background: #b45309; }
+    .artist-name { font-size: 2.2rem; margin: 0 0 0.25rem 0; line-height: 1.1; }
+    .artist-dates { color: var(--fg-muted); margin: 0; font-size: 1.05rem; }
+
+    .artist-counts {
+      margin-top: 1rem;
+      display: flex;
+      gap: 1.5rem;
+      color: var(--fg-muted);
+      font-size: 0.95rem;
+    }
+
+    .artist-links {
+      list-style: none;
+      padding: 0;
+      margin: 1rem 0 0 0;
+      display: flex;
+      gap: 1rem;
+      font-size: 0.88rem;
+    }
+    .artist-links a {
+      padding: 0.25rem 0.55rem;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      color: var(--fg-muted);
+    }
+    .artist-links a:hover { color: var(--fg); border-color: var(--fg); text-decoration: none; }
+
+    .artist-section { margin: 2.5rem 0; }
+    .artist-section h2 {
+      font-size: 1.2rem;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 0.4rem;
+      margin-bottom: 1rem;
+    }
+    .artist-prose { max-width: 65ch; line-height: 1.6; }
+    .artist-prose p { margin: 0 0 0.75rem 0; }
+    .artist-prose em { font-style: italic; }
+
+    .artist-works-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+      gap: 1rem;
+    }
+    .work-card {
+      background: var(--bg-soft);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      overflow: hidden;
+    }
+    .work-card:hover { transform: translateY(-2px); box-shadow: 0 6px 16px rgba(0,0,0,0.06); transition: 0.15s; }
+    .work-link { display: block; color: inherit; }
+    .work-image { aspect-ratio: 1 / 1; background: #f0f0f0; }
+    .work-image img { width: 100%; height: 100%; object-fit: cover; }
+    .work-image-placeholder {
+      display: flex; align-items: center; justify-content: center; height: 100%;
+      color: var(--fg-faint); font-size: 0.8rem; padding: 0.5rem; text-align: center;
+    }
+    .work-body { padding: 0.6rem 0.75rem; }
+    .work-title { margin: 0; font-weight: 600; font-size: 0.9rem; line-height: 1.3; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+    .work-meta { margin: 0.2rem 0 0 0; font-size: 0.78rem; color: var(--fg-muted); }
+    .work-class { font-style: italic; }
+
+    .more-works {
+      margin-top: 1.5rem;
+      padding: 1rem;
+      background: var(--bg-soft);
+      border: 1px dashed var(--border);
+      border-radius: 4px;
+      text-align: center;
+      color: var(--fg-muted);
+    }
+    .more-works a { margin-left: 0.5rem; font-weight: 500; color: var(--fg); text-decoration: underline; text-decoration-color: color-mix(in oklab, currentColor 40%, transparent); }
+
+    .exhibitions-list {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+    }
+    .exhibitions-list li { padding: 0.4rem 0; border-bottom: 1px dotted var(--border); }
+    .exhibitions-list a { display: flex; justify-content: space-between; gap: 1rem; }
+    .ex-title { font-weight: 500; }
+    .ex-dates { color: var(--fg-muted); font-size: 0.88rem; white-space: nowrap; }
+  </style>
+</Layout>

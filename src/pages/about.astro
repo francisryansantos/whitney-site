@@ -1,0 +1,89 @@
+---
+import Layout from "../layouts/Layout.astro";
+import { META } from "../lib/catalog";
+
+const generatedDate = new Date(META.generated_at).toLocaleString();
+---
+
+<Layout title="About">
+  <article class="about">
+    <h1>About this archive</h1>
+
+    <p>
+      An independent research catalog of the
+      <strong>Whitney Museum of American Art's</strong> public collection,
+      built from the museum's
+      <a href="https://github.com/whitneymuseum/open-access" rel="noopener">open-access archive</a>
+      (released under CC0) and its public REST
+      <a href="https://whitney.org/api" rel="noopener">API</a>.
+    </p>
+
+    <p>
+      The site mirrors {META.counts.artworks.toLocaleString()} artworks
+      attributed to {META.counts.artists_with_works.toLocaleString()} artists,
+      with metadata refreshed regularly. Each artwork has its own page; you can
+      filter by classification, browse by artist, and search across titles
+      and media.
+    </p>
+
+    <h2>What's in the data</h2>
+    <ul>
+      <li>Artwork title, artist(s), display date, classification, medium, dimensions, credit line.</li>
+      <li>Accession number and parsed acquisition year (when derivable from the prefix).</li>
+      <li>Image references — hot-linked to <code>whitneymedia.org</code>; no images are re-hosted here.</li>
+      <li>Exhibitions per artist (artwork-level exhibition history isn't published).</li>
+      <li>On-view status, when known.</li>
+    </ul>
+
+    <h2>Methodology</h2>
+    <p>
+      Two data sources feed the catalog: the museum's CC0-licensed CSV
+      (collection-only artworks, minimal fields) and the public API (deeper
+      metadata including biographies, ULAN/Wikidata IDs, descriptions,
+      images, and biennial flags). Where they differ, the API record is
+      taken as the canonical grain — the CSV flattens portfolio works
+      (e.g., a 155-print portfolio appears as 155 rows in CSV but 1 record
+      in the API). The CSV's reproduction-credit field is merged in where
+      present.
+    </p>
+
+    <h2>Licensing</h2>
+    <p>
+      This is an <strong>independent research project</strong>, not affiliated
+      with or endorsed by the Whitney Museum of American Art.
+    </p>
+    <ul>
+      <li>
+        Open-access CSV data: <strong>CC0 1.0</strong>
+        — public domain.
+      </li>
+      <li>
+        API-derived metadata and images: noncommercial / educational use with
+        attribution. Images are served from <code>whitneymedia.org</code> and
+        are not redistributed.
+      </li>
+    </ul>
+
+    <p class="generated">
+      Data snapshot generated <time>{generatedDate}</time>.
+      Source pipeline:
+      <a href="https://github.com/whitneymuseum/open-access" rel="noopener">whitneymuseum/open-access</a>
+      + <a href="https://whitney.org/api" rel="noopener">whitney.org/api</a>.
+    </p>
+  </article>
+
+  <style>
+    .about { max-width: 720px; margin: 0 auto; }
+    .about h1 { font-size: 2rem; }
+    .about h2 { font-size: 1.25rem; margin-top: 2rem; }
+    .about p { line-height: 1.6; }
+    .about ul { line-height: 1.7; padding-left: 1.25rem; }
+    .about .generated {
+      margin-top: 2.5rem;
+      padding-top: 1rem;
+      border-top: 1px solid var(--border);
+      color: var(--fg-muted);
+      font-size: 0.9rem;
+    }
+  </style>
+</Layout>

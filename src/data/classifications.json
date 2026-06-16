@@ -1,0 +1,19 @@
+[
+	{"classification":"Prints","n":8192},
+	{"classification":"Photographs","n":7012},
+	{"classification":"Drawings","n":6998},
+	{"classification":"Paintings","n":2618},
+	{"classification":"Sculpture","n":1493},
+	{"classification":"Installations","n":399},
+	{"classification":"Video","n":222},
+	{"classification":"Digital Art","n":180},
+	{"classification":"Film","n":165},
+	{"classification":"Books","n":75},
+	{"classification":"Textiles","n":31},
+	{"classification":"Sound Work","n":15},
+	{"classification":"Decorative Arts and Utilitarian Objects","n":10},
+	{"classification":"Costume and Jewelry","n":7},
+	{"classification":"Performance Art","n":5},
+	{"classification":"Models","n":2},
+	{"classification":"Plates","n":1}
+]

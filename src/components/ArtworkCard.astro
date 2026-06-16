@@ -1,0 +1,135 @@
+---
+import type { Artwork } from "../lib/catalog";
+
+interface Props {
+  artwork: Artwork;
+}
+
+const { artwork } = Astro.props;
+
+const altText =
+  artwork.ai_alt_text ||
+  artwork.alt_text ||
+  artwork.title ||
+  "Untitled artwork";
+const thumbUrl = artwork.primary_image_url;
+const fullImageUrl = artwork.primary_image_url;
+const href = `/artworks/${artwork.id}`;
+const artistText = artwork.display_artist_text || (artwork.artists[0]?.name ?? "Unknown");
+---
+
+{thumbUrl && (
+  <article class="tile-shell">
+    <a href={href} class="tile" aria-label={`${artwork.title || "Untitled"} — ${artistText}`}>
+      <img
+        class="artwork-img"
+        src={thumbUrl}
+        data-full-src={fullImageUrl}
+        alt={altText}
+        loading="lazy"
+        decoding="async"
+        onload="this.classList.add('is-loaded')"
+      />
+      <div class="tile-caption">
+        <p class="tile-title">{artwork.title || "Untitled"}</p>
+        <p class="tile-artist">
+          {artistText}{artwork.display_date && <span class="tile-date"> · {artwork.display_date}</span>}
+        </p>
+      </div>
+    </a>
+    <button
+      type="button"
+      class="save-artwork-btn tile-save"
+      data-save-artwork={artwork.id}
+      aria-label={`Save ${artwork.title || "Untitled"}`}
+      aria-pressed="false"
+    >
+      <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M20.8 4.6c-1.6-1.5-4.1-1.5-5.7 0L12 7.7 8.9 4.6c-1.6-1.5-4.1-1.5-5.7 0-1.6 1.6-1.6 4.1 0 5.7L12 19l8.8-8.7c1.6-1.6 1.6-4.1 0-5.7Z" />
+      </svg>
+    </button>
+  </article>
+)}
+
+<style>
+  .tile-shell {
+    position: relative;
+    aspect-ratio: 4 / 5;
+    background: var(--bg-soft);
+    overflow: hidden;
+  }
+  .tile {
+    display: block;
+    position: relative;
+    overflow: hidden;
+    background: var(--bg-soft);
+    color: inherit;
+    width: 100%;
+    height: 100%;
+    aspect-ratio: 4 / 5;
+  }
+  .tile:hover { text-decoration: none; }
+  .tile img {
+    width: 100%;
+    min-height: 180px;
+    height: 100%;
+    aspect-ratio: 4 / 5;
+    object-fit: contain;
+    display: block;
+    background: var(--bg-soft);
+    opacity: 0;
+    transition: opacity 0.55s ease;
+  }
+  .tile img.is-loaded { opacity: 1; }
+  .tile:hover img.is-loaded, .tile:focus-visible img.is-loaded { opacity: 0.85; }
+  .tile-caption {
+    position: absolute;
+    inset: auto 0 0 0;
+    padding: 0.75rem 0.8rem;
+    background: linear-gradient(
+      to top,
+      color-mix(in oklab, var(--bg) 92%, transparent) 30%,
+      color-mix(in oklab, var(--bg) 0%, transparent)
+    );
+    color: var(--fg);
+    opacity: 0;
+    transform: translateY(6px);
+    transition: opacity 0.2s, transform 0.2s;
+    pointer-events: none;
+  }
+  .tile:hover .tile-caption,
+  .tile:focus-visible .tile-caption {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  .tile-title {
+    margin: 0;
+    font-family: var(--font-sans);
+    font-weight: 500;
+    font-size: 0.95rem;
+    line-height: 1.2;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  .tile-artist {
+    margin: 0.15rem 0 0 0;
+    font-size: 0.78rem;
+    color: var(--fg-muted);
+    line-height: 1.2;
+  }
+  .tile-date { opacity: 0.7; }
+
+  @media (hover: none) {
+    /* Touch devices: keep the caption visible by default. */
+    .tile-caption { opacity: 1; transform: none; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .tile img {
+      opacity: 1;
+      transition: none;
+    }
+  }
+</style>

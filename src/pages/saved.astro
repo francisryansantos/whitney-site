@@ -1,0 +1,229 @@
+---
+import Layout from "../layouts/Layout.astro";
+---
+
+<Layout title="Saved Artworks">
+  <section class="saved-header">
+    <div>
+      <h1>Saved artworks</h1>
+      <p id="saved-count">Works you save will appear here.</p>
+    </div>
+    <button type="button" class="clear-saved-btn" id="clear-saved" hidden>Clear saved</button>
+  </section>
+
+  <section class="saved-grid" id="saved-grid" aria-live="polite">
+    <p class="muted-line">Loading saved artworks...</p>
+  </section>
+
+  <script is:inline>
+    (function () {
+      const grid = document.getElementById("saved-grid");
+      const count = document.getElementById("saved-count");
+      const clearButton = document.getElementById("clear-saved");
+      const storageKey = "whitney:saved-artworks";
+
+      function escapeText(value) {
+        return String(value || "").replace(/[&<>]/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[char] || char));
+      }
+
+      function escapeAttr(value) {
+        return escapeText(value).replace(/"/g, "&quot;");
+      }
+
+      function savedIds() {
+        if (window.WhitneySaved?.read) return window.WhitneySaved.read();
+        try {
+          const parsed = JSON.parse(localStorage.getItem(storageKey) || "[]");
+          return Array.isArray(parsed) ? parsed.filter(Boolean).map(String) : [];
+        } catch (_) {
+          return [];
+        }
+      }
+
+      function renderTile(artwork) {
+        const title = artwork.title || "Untitled";
+        const artist = artwork.artist || "Unknown artist";
+        const date = artwork.date || "";
+        const thumb = artwork.thumb || artwork.image || "";
+        return `<article class="tile-shell">
+          <a href="${escapeAttr(artwork.url)}" class="tile" aria-label="${escapeAttr(title + " — " + artist)}">
+            <img class="artwork-img is-loaded" src="${escapeAttr(thumb)}" alt="${escapeAttr(title)}" loading="lazy" decoding="async" />
+            <div class="tile-caption">
+              <p class="tile-title">${escapeText(title)}</p>
+              <p class="tile-artist">${escapeText(artist)}${date ? `<span class="tile-date"> · ${escapeText(date)}</span>` : ""}</p>
+            </div>
+          </a>
+          <button type="button" class="save-artwork-btn tile-save is-saved" data-save-artwork="${escapeAttr(artwork.id)}" aria-label="Remove ${escapeAttr(title)} from saved" aria-pressed="true">
+            <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M20.8 4.6c-1.6-1.5-4.1-1.5-5.7 0L12 7.7 8.9 4.6c-1.6-1.5-4.1-1.5-5.7 0-1.6 1.6-1.6 4.1 0 5.7L12 19l8.8-8.7c1.6-1.6 1.6-4.1 0-5.7Z" />
+            </svg>
+          </button>
+        </article>`;
+      }
+
+      async function renderSaved() {
+        const ids = savedIds();
+        clearButton.hidden = ids.length === 0;
+        if (ids.length === 0) {
+          count.textContent = "Works you save will appear here.";
+          grid.innerHTML = `<p class="muted-line">No saved artworks yet.</p>`;
+          return;
+        }
+
+        count.textContent = `${ids.length.toLocaleString()} saved work${ids.length === 1 ? "" : "s"}.`;
+        const index = await fetch("/artworks-index.json").then((response) => response.json());
+        const byId = new Map(index.map((artwork) => [artwork.id, artwork]));
+        const artworks = ids.map((id) => byId.get(id)).filter(Boolean);
+        grid.innerHTML = artworks.map(renderTile).join("") || `<p class="muted-line">Saved artworks could not be found.</p>`;
+        window.WhitneySaved?.updateButtons?.(grid);
+      }
+
+      clearButton.addEventListener("click", () => {
+        if (window.WhitneySaved?.write) {
+          window.WhitneySaved.write([]);
+        } else {
+          try {
+            localStorage.setItem(storageKey, "[]");
+          } catch (_) {}
+          window.dispatchEvent(new CustomEvent("saved-artworks-change", { detail: { ids: [] } }));
+        }
+        renderSaved();
+      });
+
+      window.addEventListener("saved-artworks-change", renderSaved);
+      renderSaved().catch(() => {
+        count.textContent = "Unable to load saved artworks.";
+        grid.innerHTML = `<p class="muted-line">Artwork index could not be loaded.</p>`;
+      });
+    })();
+  </script>
+
+  <style>
+    .saved-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: end;
+      gap: 1rem;
+      margin: 1rem 0 2rem;
+    }
+    .saved-header h1 {
+      font-size: clamp(1.8rem, 4vw, 3rem);
+      margin-bottom: 0.3rem;
+    }
+    .saved-header p {
+      color: var(--fg-muted);
+      margin: 0;
+      font-size: 0.95rem;
+    }
+    .clear-saved-btn {
+      border: 1px solid var(--border-strong);
+      border-radius: 999px;
+      background: var(--bg);
+      color: var(--fg);
+      padding: 0.65rem 1rem;
+      font: inherit;
+      font-size: 0.88rem;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .clear-saved-btn:hover,
+    .clear-saved-btn:focus-visible {
+      border-color: var(--fg);
+      outline: none;
+    }
+    .saved-grid {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 0.5rem;
+    }
+    .tile-shell {
+      position: relative;
+      overflow: hidden;
+      background: var(--bg-soft);
+      width: 100%;
+      aspect-ratio: 4 / 5;
+    }
+    .tile {
+      display: block;
+      position: relative;
+      overflow: hidden;
+      background: var(--bg-soft);
+      color: inherit;
+      width: 100%;
+      height: 100%;
+      aspect-ratio: 4 / 5;
+    }
+    .tile:hover { text-decoration: none; }
+    .tile img {
+      width: 100%;
+      height: 100%;
+      min-height: 180px;
+      object-fit: contain;
+      display: block;
+      background: var(--bg-soft);
+    }
+    .tile:hover img,
+    .tile:focus-visible img {
+      opacity: 0.85;
+    }
+    .tile-caption {
+      position: absolute;
+      inset: auto 0 0 0;
+      padding: 0.75rem 0.8rem;
+      background: linear-gradient(
+        to top,
+        color-mix(in oklab, var(--bg) 92%, transparent) 30%,
+        color-mix(in oklab, var(--bg) 0%, transparent)
+      );
+      color: var(--fg);
+      opacity: 0;
+      transform: translateY(6px);
+      transition: opacity 0.2s, transform 0.2s;
+      pointer-events: none;
+    }
+    .tile:hover .tile-caption,
+    .tile:focus-visible .tile-caption {
+      opacity: 1;
+      transform: translateY(0);
+    }
+    .tile-title {
+      margin: 0;
+      font-family: var(--font-sans);
+      font-weight: 500;
+      font-size: 0.95rem;
+      line-height: 1.2;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+    .tile-artist {
+      margin: 0.15rem 0 0 0;
+      font-size: 0.78rem;
+      color: var(--fg-muted);
+      line-height: 1.2;
+    }
+    .tile-date { opacity: 0.7; }
+    .muted-line {
+      color: var(--fg-muted);
+      padding: 3rem 0;
+      text-align: center;
+      grid-column: 1 / -1;
+    }
+    @media (hover: none) {
+      .tile-caption {
+        opacity: 1;
+        transform: none;
+      }
+    }
+    @media (max-width: 1280px) { .saved-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+    @media (max-width: 960px)  { .saved-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+    @media (max-width: 640px)  {
+      .saved-header {
+        align-items: start;
+        flex-direction: column;
+      }
+      .saved-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+  </style>
+</Layout>

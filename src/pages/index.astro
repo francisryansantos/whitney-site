@@ -1,0 +1,753 @@
+---
+import Layout from "../layouts/Layout.astro";
+import ArtworkCard from "../components/ArtworkCard.astro";
+import {
+  ARTWORKS,
+  ARTISTS,
+  CLASSIFICATIONS,
+  sortForBrowse,
+} from "../lib/catalog";
+
+const INITIAL_COUNT = 90;
+
+const browseArtworks = [...ARTWORKS]
+  .filter((artwork) => artwork.primary_image_url)
+  .sort(sortForBrowse);
+const initial = browseArtworks.slice(0, INITIAL_COUNT);
+const browseTotal = browseArtworks.length;
+
+const autocomplete = ARTISTS.map((a) => ({
+  i: a.id,
+  n: a.display_name,
+  s: a.sort_name ?? a.display_name,
+  w: a.n_works,
+}));
+---
+
+<Layout title="The Whitney Visual Explorer">
+  <section class="hero">
+    <p class="hero-sub">
+      Search by artist, title, classification, color, pattern, texture, or visual mood.
+    </p>
+
+    <div class="search-row">
+      <div class="search-input-wrap">
+        <svg class="search-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+          <circle cx="11" cy="11" r="7" />
+          <path d="M21 21l-4.35-4.35" />
+        </svg>
+        <input
+          type="search"
+          id="search-input"
+          placeholder="Search Hopper, red, striped, geometric, soft landscape…"
+          autocomplete="off"
+          spellcheck="false"
+        />
+      </div>
+      <div class="select-wrap">
+        <select id="class-select" aria-label="Filter by classification">
+          <option value="">All classifications</option>
+          {CLASSIFICATIONS.map((c) => (
+            <option value={c.classification}>
+              {c.classification} ({c.n.toLocaleString()})
+            </option>
+          ))}
+        </select>
+        <svg class="select-chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+          <path d="M6 9l6 6 6-6" />
+        </svg>
+      </div>
+      <div class="select-wrap">
+        <select id="artist-select" aria-label="Filter by artist">
+          <option value="">All artists</option>
+          {ARTISTS.map((artist) => (
+            <option value={artist.id} data-name={artist.display_name}>
+              {artist.display_name} ({artist.n_works.toLocaleString()})
+            </option>
+          ))}
+        </select>
+        <svg class="select-chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+          <path d="M6 9l6 6 6-6" />
+        </svg>
+      </div>
+    </div>
+
+    <div class="active-row" id="active-row">
+      <span id="results-count"></span>
+      <button id="clear-filters" type="button" class="text-btn" hidden>Clear all</button>
+    </div>
+
+    <div class="prompt-row" aria-label="Visual search suggestions">
+      <button type="button" data-prompt="red">red</button>
+      <button type="button" data-prompt="blue">blue</button>
+      <button type="button" data-prompt="striped pattern">striped</button>
+      <button type="button" data-prompt="geometric pattern">geometric</button>
+      <button type="button" data-prompt="floral">floral</button>
+      <button type="button" data-prompt="black and white">black + white</button>
+      <button type="button" data-prompt="soft landscape">soft landscape</button>
+      <button type="button" data-prompt="grid">grid</button>
+    </div>
+  </section>
+
+  <section class="masonry" id="results-grid">
+    {initial.map((artwork) => <ArtworkCard artwork={artwork} />)}
+  </section>
+
+  <div class="load-more-wrap" id="load-more-wrap">
+    <button class="load-more-btn" id="load-more-btn" type="button">See more</button>
+    <div class="spinner" id="loading-spinner" hidden>
+      <div class="spinner-inner"></div>
+    </div>
+  </div>
+
+  <script type="application/json" id="artists-data" set:html={JSON.stringify(autocomplete)}></script>
+  <script type="application/json" id="browse-meta" set:html={JSON.stringify({ totalArtworks: browseTotal })}></script>
+
+  <script>
+    type Filter = { type: "classification" | "artist"; value: string; label: string };
+    type BrowseArtwork = {
+      id: string;
+      url: string;
+      title: string | null;
+      artist: string | null;
+      date: string | null;
+      classification: string | null;
+      image: string | null;
+      thumb: string | null;
+      artistIds: string[];
+      visualText?: string;
+    };
+    const state: { filters: Filter[]; query: string; isLoading: boolean } = { filters: [], query: "", isLoading: false };
+    const browseMeta = JSON.parse(document.getElementById("browse-meta")?.textContent || "{}");
+    const PAGE_SIZE = 90;
+    const TOTAL_ARTWORKS = Number(browseMeta.totalArtworks || 0);
+    let currentOffset = PAGE_SIZE;
+    let totalResults = TOTAL_ARTWORKS;
+    let browsePromise: Promise<BrowseArtwork[]> | null = null;
+    let browseOrder: BrowseArtwork[] | null = null;
+
+    function loadBrowseIndex() {
+      if (!browsePromise) {
+        browsePromise = fetch("/artworks-index.json")
+          .then((res) => {
+            if (!res.ok) throw new Error("Unable to load artwork index");
+            return res.json();
+          });
+      }
+      return browsePromise;
+    }
+
+    async function loadRandomBrowseOrder() {
+      if (!browseOrder) {
+        browseOrder = shuffleCopy(await loadBrowseIndex());
+      }
+      return browseOrder;
+    }
+
+    function refreshRandomBrowseOrder() {
+      browseOrder = null;
+      return loadRandomBrowseOrder();
+    }
+
+    function shuffleCopy<T>(items: T[]): T[] {
+      const out = [...items];
+      for (let i = out.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [out[i], out[j]] = [out[j], out[i]];
+      }
+      return out;
+    }
+
+    function filterBrowseArtworks(items: BrowseArtwork[]) {
+      return items.filter((artwork) => {
+        for (const filter of state.filters) {
+          if (filter.type === "classification" && artwork.classification !== filter.value) {
+            return false;
+          }
+          if (filter.type === "artist" && !artwork.artistIds.includes(filter.value)) {
+            return false;
+          }
+        }
+        return true;
+      });
+    }
+
+    const visualExpansions: Record<string, string[]> = {
+      pattern: ["pattern", "repeating", "striped", "stripe", "grid", "checkered", "checker", "dots", "dotted", "polka", "geometric", "motif"],
+      patterns: ["pattern", "repeating", "striped", "stripe", "grid", "checkered", "checker", "dots", "dotted", "polka", "geometric", "motif"],
+      colorful: ["colorful", "bright", "vibrant", "red", "blue", "yellow", "green", "pink", "orange", "purple"],
+      monochrome: ["black", "white", "gray", "grey", "monochrome"],
+      texture: ["texture", "textured", "rough", "smooth", "woven", "fabric", "surface", "layered"],
+      geometric: ["geometric", "grid", "line", "square", "circle", "triangle", "diamond", "rectangle"],
+      floral: ["flower", "flowers", "floral", "petal", "garden", "plant"],
+      soft: ["soft", "pale", "light", "blurred", "misty", "calm", "delicate"],
+    };
+
+    function normalize(value: string) {
+      return value.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+    }
+
+    function termsFor(query: string) {
+      const base = normalize(query).split(/\s+/).filter(Boolean);
+      return [...new Set(base.flatMap((term) => [term, ...(visualExpansions[term] || [])]))];
+    }
+
+    function searchableText(artwork: BrowseArtwork) {
+      return normalize([
+        artwork.title,
+        artwork.artist,
+        artwork.date,
+        artwork.classification,
+        artwork.visualText,
+      ].filter(Boolean).join(" "));
+    }
+
+    function scoreArtwork(artwork: BrowseArtwork, terms: string[]) {
+      const text = searchableText(artwork);
+      const title = normalize(artwork.title || "");
+      const artist = normalize(artwork.artist || "");
+      const classification = normalize(artwork.classification || "");
+      let score = 0;
+      for (const term of terms) {
+        if (!term) continue;
+        const exact = new RegExp(`\\b${term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "g");
+        const matches = text.match(exact)?.length || 0;
+        score += matches * 8;
+        if (text.includes(term)) score += 3;
+        if (title.includes(term)) score += 8;
+        if (artist.includes(term)) score += 10;
+        if (classification.includes(term)) score += 4;
+      }
+      return score;
+    }
+
+    // ---- See more control ----
+    const loadMoreButton = $("load-more-btn") as HTMLButtonElement;
+    loadMoreButton.addEventListener("click", () => {
+      loadMoreArtworks();
+    });
+
+    $("results-grid").addEventListener("error", (event) => {
+      const img = event.target as HTMLImageElement;
+      if (!(img instanceof HTMLImageElement)) return;
+
+      const fullSrc = img.dataset.fullSrc;
+      if (fullSrc && img.src !== fullSrc) {
+        img.src = fullSrc;
+        delete img.dataset.fullSrc;
+        return;
+      }
+
+      img.closest(".tile")?.remove();
+    }, true);
+
+    $("results-grid").addEventListener("load", (event) => {
+      const img = event.target as HTMLImageElement;
+      if (!(img instanceof HTMLImageElement)) return;
+      img.classList.add("is-loaded");
+    }, true);
+
+    function markLoadedImages(root: ParentNode) {
+      root.querySelectorAll<HTMLImageElement>(".artwork-img").forEach((img) => {
+        if (img.complete && img.naturalWidth > 0) {
+          img.classList.add("is-loaded");
+        }
+      });
+    }
+
+    function updateLoadMoreControl() {
+      loadMoreButton.hidden = state.isLoading || currentOffset >= totalResults;
+      loadMoreButton.disabled = state.isLoading;
+    }
+
+    async function loadMoreArtworks() {
+      if (state.isLoading) return;
+      
+      state.isLoading = true;
+      const spinner = $("loading-spinner");
+      updateLoadMoreControl();
+      spinner.hidden = false;
+
+      try {
+        const next = (await loadRandomBrowseOrder()).slice(currentOffset, currentOffset + PAGE_SIZE);
+        const grid = $("results-grid");
+        grid.insertAdjacentHTML("beforeend", next.map((item) => renderTile(item, true)).join(""));
+        markLoadedImages(grid);
+        revealNewTiles(grid);
+        currentOffset += PAGE_SIZE;
+        updateBrowseCount();
+      } finally {
+        state.isLoading = false;
+        spinner.hidden = true;
+        updateLoadMoreControl();
+      }
+    }
+
+    function $(id: string) { return document.getElementById(id)!; }
+
+    function updateBrowseCount() {
+      const count = document.getElementById("results-count");
+      if (!count) return;
+      if (state.isLoading) {
+        count.textContent = "Loading works...";
+        return;
+      }
+      if (state.query.trim() || state.filters.length) {
+        count.textContent = totalResults === 0
+          ? "No matches."
+          : `${totalResults.toLocaleString()} match${totalResults === 1 ? "" : "es"}.`;
+        return;
+      }
+      count.textContent = "";
+    }
+
+    // ---- Classification dropdown ----
+    const classSelect = $("class-select") as HTMLSelectElement;
+    classSelect.addEventListener("change", () => {
+      state.filters = state.filters.filter((f) => f.type !== "classification");
+      if (classSelect.value) {
+        state.filters.push({ type: "classification", value: classSelect.value, label: classSelect.value });
+      }
+      applyFilters();
+    });
+
+    // ---- Artist dropdown ----
+    const artistsRaw = JSON.parse($("artists-data").textContent || "[]");
+    const artistSelect = $("artist-select") as HTMLSelectElement;
+    artistSelect.addEventListener("change", () => {
+      state.filters = state.filters.filter((f) => f.type !== "artist");
+      if (artistSelect.value) {
+        const selected = artistSelect.selectedOptions[0];
+        state.filters.push({
+          type: "artist",
+          value: artistSelect.value,
+          label: selected?.dataset.name || selected?.textContent?.replace(/\s+\(\d+\)$/, "") || artistSelect.value,
+        });
+      }
+      applyFilters();
+    });
+
+    // ---- Search ----
+    let debounce: number;
+    $("search-input").addEventListener("input", (e) => {
+      window.clearTimeout(debounce);
+      debounce = window.setTimeout(() => {
+        state.query = (e.target as HTMLInputElement).value;
+        applyFilters();
+      }, 200);
+    });
+
+    document.querySelectorAll<HTMLButtonElement>("[data-prompt]").forEach((button) => {
+      button.addEventListener("click", () => {
+        const value = button.dataset.prompt || "";
+        (document.getElementById("search-input") as HTMLInputElement).value = value;
+        state.query = value;
+        applyFilters();
+      });
+    });
+
+    // ---- Clear ----
+    $("clear-filters").addEventListener("click", () => {
+      (document.getElementById("search-input") as HTMLInputElement).value = "";
+      classSelect.value = "";
+      artistSelect.value = "";
+      state.filters = [];
+      state.query = "";
+      applyFilters();
+    });
+
+    function refreshActiveChrome() {
+      const n = state.filters.length + (state.query.trim() ? 1 : 0);
+      ($("clear-filters") as HTMLButtonElement).hidden = n === 0;
+    }
+
+    // ---- URL params on load ----
+    {
+      const params = new URLSearchParams(window.location.search);
+      const artistParam = params.get("artist");
+      const classParam = params.get("classification");
+      const qParam = params.get("q");
+      if (artistParam) {
+        const found = artistsRaw.find((a: any) => a.n === artistParam);
+        if (found) {
+          state.filters.push({ type: "artist", value: found.i, label: found.n });
+          artistSelect.value = found.i;
+        }
+      }
+      if (classParam) {
+        state.filters.push({ type: "classification", value: classParam, label: classParam });
+        classSelect.value = classParam;
+      }
+      if (qParam) {
+        (document.getElementById("search-input") as HTMLInputElement).value = qParam;
+        state.query = qParam;
+      }
+      refreshActiveChrome();
+      applyFilters();
+    }
+
+    async function applyFilters() {
+      refreshActiveChrome();
+      const count = document.getElementById("results-count");
+      const grid = $("results-grid");
+      grid.innerHTML = `<p class="muted-line">Searching...</p>`;
+      if (count) count.textContent = "Searching...";
+      state.isLoading = true;
+      updateLoadMoreControl();
+
+      try {
+        const terms = termsFor(state.query);
+        const filtered = filterBrowseArtworks(await loadBrowseIndex());
+        const browse = terms.length === 0
+          ? (state.filters.length === 0 ? await refreshRandomBrowseOrder() : shuffleCopy(filtered))
+          : filtered
+              .map((artwork) => ({ artwork, score: scoreArtwork(artwork, terms) }))
+              .filter((item) => item.score > 0)
+              .sort((a, b) => b.score - a.score || a.artwork.id.localeCompare(b.artwork.id))
+              .map((item) => item.artwork);
+        browseOrder = browse;
+        totalResults = browse.length;
+        currentOffset = PAGE_SIZE;
+        grid.innerHTML = browse.slice(0, PAGE_SIZE).map((item, index) => renderTile(item, true, index < 24)).join("")
+          || `<p class="muted-line">Nothing matches this search.</p>`;
+        markLoadedImages(grid);
+        revealNewTiles(grid);
+      } catch (e) {
+        grid.innerHTML = `<p class="muted-line">Artwork index could not be loaded.</p>`;
+        if (count) count.textContent = "Unable to load works.";
+      } finally {
+        state.isLoading = false;
+        updateBrowseCount();
+        updateLoadMoreControl();
+      }
+    }
+
+    function revealNewTiles(grid: HTMLElement) {
+      const tiles = Array.from(grid.querySelectorAll<HTMLElement>(".tile-enter"));
+      window.requestAnimationFrame(() => {
+        window.requestAnimationFrame(() => {
+          tiles.forEach((tile, index) => {
+            const delay = Math.min(index, 36) * 24;
+            window.setTimeout(() => {
+              tile.classList.add("tile-enter-active");
+            }, delay);
+          });
+        });
+      });
+      window.setTimeout(() => {
+        tiles.forEach((tile) => tile.classList.remove("tile-enter", "tile-enter-active"));
+      }, Math.min(tiles.length, 36) * 24 + 1000);
+    }
+
+    function renderTile(data: any, animate = false, eager = false): string {
+      const m = data.meta || {};
+      const image = m.image || data.image || "";
+      if (!image) return "";
+      const thumb = m.thumb || data.thumb || image;
+      const url = data.url || "#";
+      const id = data.id || url.split("/").filter(Boolean).at(-1) || "";
+      const title = m.title || data.title || "Untitled";
+      const artist = m.artist || data.artist || "Unknown artist";
+      const date = m.date || data.date || "";
+      return `<article class="tile-shell${animate ? " tile-enter" : ""}">
+        <a href="${url}" class="tile" aria-label="${escapeAttr(title + " — " + artist)}">
+          <img class="artwork-img" src="${escapeAttr(thumb)}" data-full-src="${escapeAttr(image)}" alt="${escapeAttr(title)}" loading="${eager ? "eager" : "lazy"}" decoding="async"${eager ? ' fetchpriority="high"' : ""} />
+          <div class="tile-caption">
+            <p class="tile-title">${escapeText(title)}</p>
+            <p class="tile-artist">${escapeText(artist)}${date ? `<span class="tile-date"> · ${escapeText(date)}</span>` : ""}</p>
+          </div>
+        </a>
+        <button type="button" class="save-artwork-btn tile-save" data-save-artwork="${escapeAttr(id)}" aria-label="Save ${escapeAttr(title)}" aria-pressed="false">
+          <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M20.8 4.6c-1.6-1.5-4.1-1.5-5.7 0L12 7.7 8.9 4.6c-1.6-1.5-4.1-1.5-5.7 0-1.6 1.6-1.6 4.1 0 5.7L12 19l8.8-8.7c1.6-1.6 1.6-4.1 0-5.7Z" />
+          </svg>
+        </button>
+      </article>`;
+    }
+    function escapeText(s: string) { return (s || "").replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c] || c)); }
+    function escapeAttr(s: string) { return escapeText(s).replace(/"/g, "&quot;"); }
+
+    markLoadedImages($("results-grid"));
+    updateLoadMoreControl();
+  </script>
+
+    <style is:global>
+      /* These are global so the JS-injected tiles share the same selectors. */
+    .tile-shell {
+      position: relative;
+      overflow: hidden;
+      background: var(--bg-soft);
+      width: 100%;
+      aspect-ratio: 4 / 5;
+    }
+    .tile {
+      display: block;
+      position: relative;
+      overflow: hidden;
+      background: var(--bg-soft);
+      color: inherit;
+      width: 100%;
+      height: 100%;
+      aspect-ratio: 4 / 5;
+      margin: 0 0 0.5rem 0;
+      break-inside: avoid;
+    }
+    .tile-enter {
+      opacity: 0;
+      transform: translateY(24px);
+      will-change: opacity, transform;
+      transition: opacity 0.82s cubic-bezier(0.22, 1, 0.36, 1), transform 0.82s cubic-bezier(0.22, 1, 0.36, 1);
+    }
+    .tile-enter-active {
+      opacity: 1;
+      transform: translateY(0);
+    }
+    .tile:hover { text-decoration: none; }
+    .tile img {
+      width: 100%;
+      min-height: 180px;
+      height: 100%;
+      aspect-ratio: 4 / 5;
+      object-fit: contain;
+      display: block;
+      background: var(--bg-soft);
+      opacity: 0;
+      transition: opacity 0.85s ease;
+    }
+    .tile img.is-loaded {
+      opacity: 1;
+    }
+    .tile:hover img.is-loaded, .tile:focus-visible img.is-loaded { opacity: 0.85; }
+    .tile-caption {
+      position: absolute;
+      inset: auto 0 0 0;
+      padding: 0.75rem 0.8rem;
+      background: linear-gradient(to top,
+        color-mix(in oklab, var(--bg) 92%, transparent) 30%,
+        color-mix(in oklab, var(--bg) 0%, transparent));
+      color: var(--fg);
+      opacity: 0;
+      transform: translateY(6px);
+      transition: opacity 0.2s, transform 0.2s;
+      pointer-events: none;
+    }
+    .tile:hover .tile-caption, .tile:focus-visible .tile-caption { opacity: 1; transform: translateY(0); }
+    .tile-title { margin: 0; font-family: var(--font-sans); font-weight: 500; font-size: 0.95rem; line-height: 1.2; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+    .tile-artist { margin: 0.15rem 0 0 0; font-size: 0.78rem; color: var(--fg-muted); line-height: 1.2; }
+    .tile-date { opacity: 0.7; }
+    @media (hover: none) { .tile-caption { opacity: 1; transform: none; } }
+    @media (prefers-reduced-motion: reduce) {
+      .tile-enter,
+      .tile-enter-active {
+        opacity: 1;
+        transform: none;
+        transition: none;
+      }
+      .tile img {
+        opacity: 1;
+        transition: none;
+      }
+    }
+  </style>
+
+  <style>
+    .hero {
+      max-width: var(--hero-max-w);
+      margin: 2.5rem auto 2.5rem;
+      text-align: center;
+    }
+    .hero-sub {
+      color: var(--fg-muted);
+      margin: 0 auto 2rem;
+      font-size: 0.95rem;
+      max-width: none;
+      white-space: nowrap;
+    }
+
+    .search-row {
+      display: grid;
+      grid-template-columns: minmax(360px, 2.4fr) minmax(180px, auto) minmax(180px, auto);
+      gap: 0.5rem;
+      align-items: center;
+      width: min(100%, 980px);
+      margin-inline: auto;
+    }
+    @media (max-width: 640px) {
+      .search-row { grid-template-columns: 1fr; }
+      .hero-sub {
+        font-size: 0.82rem;
+        white-space: normal;
+      }
+    }
+    .search-input-wrap {
+      position: relative;
+      display: flex;
+      align-items: center;
+    }
+    .search-icon {
+      position: absolute;
+      left: 0.8rem;
+      color: var(--fg-faint);
+      pointer-events: none;
+    }
+    #search-input {
+      width: 100%;
+      padding: 0.7rem 0.9rem 0.7rem 2.4rem;
+      border: 1px solid var(--border-strong);
+      background: var(--bg);
+      color: var(--fg);
+      border-radius: 999px;
+      font: inherit;
+      font-size: 0.95rem;
+    }
+    #search-input:focus {
+      outline: none;
+      border-color: var(--fg);
+    }
+
+    .select-wrap { position: relative; display: inline-flex; align-items: center; }
+    #class-select,
+    #artist-select {
+      appearance: none;
+      -webkit-appearance: none;
+      background: var(--bg);
+      color: var(--fg);
+      border: 1px solid var(--border-strong);
+      border-radius: 999px;
+      padding: 0.7rem 2.1rem 0.7rem 0.95rem;
+      font: inherit;
+      font-size: 0.9rem;
+      cursor: pointer;
+      min-width: 180px;
+    }
+    #class-select:focus,
+    #artist-select:focus {
+      outline: none;
+      border-color: var(--fg);
+    }
+    #artist-select {
+      max-width: 240px;
+    }
+    @media (max-width: 640px) {
+      .select-wrap,
+      #class-select,
+      #artist-select {
+        width: 100%;
+        max-width: none;
+        box-sizing: border-box;
+      }
+      .select-wrap {
+        display: flex;
+        min-width: 0;
+      }
+    }
+    .select-chev {
+      position: absolute;
+      right: 0.7rem;
+      color: var(--fg-muted);
+      pointer-events: none;
+    }
+
+    .active-row {
+      margin-top: 1rem;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 1rem;
+      font-size: 0.85rem;
+      color: var(--fg-muted);
+    }
+    .prompt-row {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 0.45rem;
+      margin-top: 1rem;
+    }
+    .prompt-row button {
+      border: 1px solid var(--border-strong);
+      background: var(--bg);
+      color: var(--fg-muted);
+      border-radius: 999px;
+      padding: 0.5rem 0.75rem;
+      font: inherit;
+      font-size: 0.82rem;
+      cursor: pointer;
+    }
+    .prompt-row button:hover,
+    .prompt-row button:focus-visible {
+      border-color: var(--fg);
+      color: var(--fg);
+      outline: none;
+    }
+    .text-btn {
+      background: none; border: none;
+      color: var(--fg-muted);
+      cursor: pointer;
+      font: inherit;
+      font-size: 0.85rem;
+      text-decoration: underline;
+      text-decoration-color: color-mix(in oklab, currentColor 30%, transparent);
+    }
+    .text-btn:hover { color: var(--fg); }
+
+    .masonry {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 0.5rem;
+    }
+    @media (max-width: 1280px) { .masonry { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+    @media (max-width: 960px)  { .masonry { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+    @media (max-width: 640px)  { .masonry { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+    .muted-line {
+      color: var(--fg-muted);
+      padding: 3rem 0;
+      text-align: center;
+      column-span: all;
+    }
+
+    .load-more-wrap { 
+      display: flex; 
+      justify-content: center; 
+      align-items: center;
+      margin-top: 2rem; 
+      min-height: 60px;
+    }
+
+    .load-more-btn {
+      background: var(--bg);
+      color: var(--fg);
+      border: 1px solid var(--border-strong);
+      border-radius: 999px;
+      padding: 0.8rem 1.25rem;
+      font: inherit;
+      font-size: 0.92rem;
+      cursor: pointer;
+    }
+
+    .load-more-btn:hover,
+    .load-more-btn:focus-visible {
+      border-color: var(--fg);
+      outline: none;
+    }
+
+    .load-more-btn:disabled {
+      cursor: wait;
+      opacity: 0.55;
+    }
+    
+    .spinner {
+      width: 32px;
+      height: 32px;
+      border: 3px solid color-mix(in oklab, var(--fg) 20%, transparent);
+      border-top-color: var(--fg);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+  </style>
+</Layout>

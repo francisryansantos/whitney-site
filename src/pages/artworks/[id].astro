@@ -1,0 +1,356 @@
+---
+import Layout from "../../layouts/Layout.astro";
+import ArtworkCard from "../../components/ArtworkCard.astro";
+import { ARTWORKS, relatedWorks, stripHtml, type Artwork } from "../../lib/catalog";
+
+export async function getStaticPaths() {
+  return ARTWORKS.map((a) => ({ params: { id: a.id }, props: { artwork: a } }));
+}
+
+interface Props { artwork: Artwork }
+const { artwork } = Astro.props;
+const related = relatedWorks(artwork, 6);
+
+const altText =
+  artwork.ai_alt_text ||
+  artwork.alt_text ||
+  artwork.title ||
+  "Artwork";
+
+const pageTitle = artwork.title
+  ? `${artwork.title}${artwork.display_artist_text ? ` — ${artwork.display_artist_text}` : ""}`
+  : "Untitled artwork";
+
+const description = stripHtml(artwork.description) ||
+  [artwork.display_artist_text, artwork.display_date, artwork.medium]
+    .filter(Boolean).join(", ");
+
+// Pagefind facets — repeat one element per artist so the filter is multi-valued.
+const artistFilterValues = artwork.artists.map((a) => a.name);
+---
+
+<Layout title={pageTitle} description={description.slice(0, 200)}>
+  <!-- Pagefind body container: only this content is indexed for search. -->
+  <article
+    class="detail"
+    data-pagefind-body
+    data-pagefind-meta={`title:${artwork.title || "Untitled"}`}
+  >
+    <!-- Pagefind metadata bag — used to render result cards. -->
+    <span
+      style="display:none"
+      data-pagefind-meta={`artist:${artwork.display_artist_text || "Unknown"}`}
+    ></span>
+    <span
+      style="display:none"
+      data-pagefind-meta={`date:${artwork.display_date || ""}`}
+    ></span>
+    <span
+      style="display:none"
+      data-pagefind-meta={`classification:${artwork.classification || ""}`}
+    ></span>
+    {artwork.primary_image_url && (
+      <>
+        <span style="display:none" data-pagefind-meta={`image:${artwork.primary_image_url}`}></span>
+        <span style="display:none" data-pagefind-meta={`thumb:${artwork.primary_image_url}`}></span>
+      </>
+    )}
+    <!-- Pagefind filters -->
+    {artwork.classification && (
+      <span style="display:none" data-pagefind-filter={`classification:${artwork.classification}`}></span>
+    )}
+    {artistFilterValues.map((name) => (
+      <span style="display:none" data-pagefind-filter={`artist:${name}`}></span>
+    ))}
+    {artwork.acquisition_year && (
+      <span style="display:none" data-pagefind-filter={`decade:${Math.floor(artwork.acquisition_year / 10) * 10}s`}></span>
+    )}
+    {artwork.on_view && (
+      <span style="display:none" data-pagefind-filter="on_view:yes"></span>
+    )}
+
+    <div class="detail-layout">
+      <div class="detail-image-col">
+        {artwork.primary_image_url ? (
+          <figure class="detail-figure">
+            <img
+              src={artwork.primary_image_url}
+              alt={altText}
+              loading="eager"
+              decoding="async"
+            />
+            {artwork.images.length > 1 && (
+              <div class="thumb-strip">
+                {artwork.images.map((img) => (
+                  <a href={img.url} target="_blank" rel="noopener">
+                    <img
+                      src={img.url.replace(
+                        /(\/)([^/]+)$/,
+                        (_m, slash, fname) =>
+                          slash + "small_" + fname.replace(/^(small|medium|large)_/, "")
+                      )}
+                      alt={`${altText} — view ${img.id}`}
+                      loading="lazy"
+                    />
+                  </a>
+                ))}
+              </div>
+            )}
+          </figure>
+        ) : (
+          <div class="detail-placeholder">
+            <p>No image available</p>
+            <p class="placeholder-class">{artwork.classification || "Unclassified"}</p>
+          </div>
+        )}
+      </div>
+
+      <div class="detail-meta-col">
+        <p class="detail-eyebrow">
+          {artwork.classification}
+          {artwork.on_view && <span class="badge-on-view">On view</span>}
+        </p>
+        <h1 class="detail-title">{artwork.title || "Untitled"}</h1>
+        <p class="detail-byline">
+          {artwork.artists.length > 0 ? (
+            artwork.artists.map((a, i) => (
+              <>
+                <a href={`/artists/${a.id}`}>{a.name}</a>{i < artwork.artists.length - 1 && ", "}
+              </>
+            ))
+          ) : (
+            artwork.display_artist_text || "Unknown artist"
+          )}
+        </p>
+        <button
+          type="button"
+          class="save-artwork-btn detail-save"
+          data-save-artwork={artwork.id}
+          aria-label={`Save ${artwork.title || "Untitled"}`}
+          aria-pressed="false"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M20.8 4.6c-1.6-1.5-4.1-1.5-5.7 0L12 7.7 8.9 4.6c-1.6-1.5-4.1-1.5-5.7 0-1.6 1.6-1.6 4.1 0 5.7L12 19l8.8-8.7c1.6-1.6 1.6-4.1 0-5.7Z" />
+          </svg>
+        </button>
+        {artwork.display_date && <p class="detail-date">{artwork.display_date}</p>}
+
+        <dl class="detail-meta">
+          {artwork.medium && (
+            <>
+              <dt>Medium</dt><dd>{artwork.medium}</dd>
+            </>
+          )}
+          {artwork.dimensions && (
+            <>
+              <dt>Dimensions</dt><dd>{artwork.dimensions}</dd>
+            </>
+          )}
+          {artwork.accession_number && (
+            <>
+              <dt>Accession number</dt><dd>{artwork.accession_number}</dd>
+            </>
+          )}
+          {artwork.acquisition_year && (
+            <>
+              <dt>Acquired</dt><dd>{artwork.acquisition_year}</dd>
+            </>
+          )}
+          {artwork.credit_line && (
+            <>
+              <dt>Credit line</dt><dd>{artwork.credit_line}</dd>
+            </>
+          )}
+          {artwork.credit_line_repro && (
+            <>
+              <dt>Reproduction credit</dt><dd>{artwork.credit_line_repro}</dd>
+            </>
+          )}
+          {artwork.edition && (
+            <>
+              <dt>Edition</dt><dd>{artwork.edition}</dd>
+            </>
+          )}
+          {artwork.publication_info && (
+            <>
+              <dt>Publication</dt><dd>{artwork.publication_info}</dd>
+            </>
+          )}
+          {artwork.department && (
+            <>
+              <dt>Department</dt><dd>{artwork.department}</dd>
+            </>
+          )}
+        </dl>
+
+        {artwork.description && (
+          <section class="detail-section">
+            <h2>About this work</h2>
+            <div class="detail-prose" set:html={artwork.description}></div>
+          </section>
+        )}
+
+        {(artwork.alt_text || artwork.visual_description) && (
+          <section class="detail-section">
+            <h2>Visual description</h2>
+            <p>{artwork.alt_text || artwork.visual_description}</p>
+          </section>
+        )}
+      </div>
+    </div>
+
+    {artwork.exhibitions.length > 0 && (
+      <section class="detail-section exhibitions">
+        <h2>Exhibitions featuring the artist{artwork.artists.length === 1 ? "" : "s"}</h2>
+        <p class="section-note">
+          Exhibitions in the Whitney's archive featuring any of the artists
+          listed for this work. Artwork-level exhibition history is not
+          published by the museum; the list below is artist-level.
+        </p>
+        <ul class="exhibitions-list">
+          {artwork.exhibitions.map((e) => (
+            <li>
+              <a href={`https://whitney.org/exhibitions/${e.id}`} rel="noopener">
+                <span class="ex-title">{e.title}</span>
+                <span class="ex-dates">
+                  {e.start_date}{e.end_date && ` – ${e.end_date}`}
+                </span>
+              </a>
+            </li>
+          ))}
+        </ul>
+      </section>
+    )}
+
+    {related.length > 0 && (
+      <section class="detail-section related">
+        <h2>Other works by {artwork.artists.length === 1 ? "this artist" : "these artists"}</h2>
+        <div class="related-grid">
+          {related.map((w) => <ArtworkCard artwork={w} size="grid" />)}
+        </div>
+      </section>
+    )}
+  </article>
+
+  <style>
+    .detail { padding-top: 0.5rem; }
+
+    .detail-layout {
+      display: grid;
+      grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+      gap: 3rem;
+      align-items: start;
+    }
+    @media (max-width: 900px) {
+      .detail-layout { grid-template-columns: 1fr; gap: 1.5rem; }
+    }
+
+    .detail-figure { margin: 0; }
+    .detail-figure > img {
+      width: 100%; height: auto;
+      background: var(--bg-soft);
+    }
+    .thumb-strip {
+      display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.75rem;
+    }
+    .thumb-strip a img {
+      width: 64px; height: 64px; object-fit: cover;
+      border: 1px solid var(--border);
+    }
+
+    .detail-placeholder {
+      aspect-ratio: 1 / 1; background: var(--bg-soft);
+      display: flex; flex-direction: column; justify-content: center; align-items: center;
+      color: var(--fg-faint);
+      border: 1px solid var(--border);
+    }
+    .placeholder-class { font-style: italic; margin-top: 0.25rem; }
+
+    .detail-eyebrow {
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      font-size: 0.75rem;
+      color: var(--fg-muted);
+      margin: 0 0 0.5rem 0;
+    }
+    .badge-on-view {
+      background: var(--fg); color: var(--bg);
+      font-size: 0.65rem;
+      letter-spacing: 0.05em;
+      padding: 0.1rem 0.45rem;
+      text-transform: uppercase;
+      margin-left: 0.5rem;
+    }
+    .detail-title {
+      font-family: var(--font-sans);
+      font-weight: 500;
+      font-size: clamp(1.6rem, 3vw, 2.4rem);
+      margin: 0 0 0.4rem 0;
+      line-height: 1.1;
+      letter-spacing: -0.01em;
+    }
+    .detail-byline {
+      font-size: 1.05rem; color: var(--fg); margin: 0;
+    }
+    .detail-byline a {
+      text-decoration: underline;
+      text-decoration-color: color-mix(in oklab, currentColor 25%, transparent);
+      text-underline-offset: 3px;
+    }
+    .detail-save {
+      margin: 0.6rem 0 1rem;
+      width: 36px;
+      padding: 0;
+    }
+    .detail-date {
+      color: var(--fg-muted); margin: 0.4rem 0 1.75rem 0;
+    }
+    .detail-meta {
+      display: grid;
+      grid-template-columns: max-content 1fr;
+      gap: 0.45rem 1.1rem;
+      margin: 0;
+      font-size: 0.92rem;
+    }
+    .detail-meta dt {
+      font-weight: 500; color: var(--fg-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      font-size: 0.7rem;
+      padding-top: 0.18rem;
+    }
+    .detail-meta dd { margin: 0; }
+
+    .detail-section { margin-top: 2.75rem; }
+    .detail-section h2 {
+      font-family: var(--font-sans);
+      font-weight: 500;
+      font-size: 1.4rem;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 0.5rem;
+      margin-bottom: 1rem;
+    }
+    .detail-prose { max-width: 65ch; }
+    .detail-prose p { margin: 0 0 0.85rem 0; line-height: 1.65; }
+    .detail-prose em { font-style: italic; }
+    .section-note {
+      font-size: 0.85rem;
+      color: var(--fg-muted);
+      margin: 0 0 0.85rem 0;
+      font-style: italic;
+    }
+
+    .exhibitions-list { list-style: none; padding: 0; margin: 0; }
+    .exhibitions-list li { padding: 0.5rem 0; border-bottom: 1px dotted var(--border); }
+    .exhibitions-list a { display: flex; justify-content: space-between; gap: 1rem; }
+    .ex-title { font-weight: 400; }
+    .ex-dates { color: var(--fg-muted); font-size: 0.85rem; white-space: nowrap; font-variant-numeric: tabular-nums; }
+
+    .related-grid {
+      column-count: 4;
+      column-gap: 0.5rem;
+    }
+    @media (max-width: 960px) { .related-grid { column-count: 3; } }
+    @media (max-width: 640px) { .related-grid { column-count: 2; } }
+  </style>
+</Layout>
